@@ -39,14 +39,17 @@ Function ConvertTo-JSON-Stable {
                 }
                 Default {}
             }
+            $data  = ""
             if ($keyValue)
             {
-                "`"$name`": $value"
+                $data = "`"$name`": $value"
             }
             else
             {
-                "$value"
+                $data = "$value"
             }
+            $data = $data.Replace("\", "\\")
+            $data
         }
 
         $targetObject = $_
@@ -60,6 +63,7 @@ Function ConvertTo-JSON-Stable {
 			$jsonProperties = @()
 			$shouldOutput = $true
 			$isCustomObject = $false
+            $isHashtable = $false
 			$isList = $false
 			$Type = $targetObject.GetType().Name
 			if ($Type -eq "PSCustomObject") {
@@ -81,6 +85,19 @@ Function ConvertTo-JSON-Stable {
 				$wrapper_begin = "["
 				$wrapper_end = "]"
 				$delimeter = ", "
+			}
+            elseif ($Type -eq "Hashtable")
+			{
+				$isHashtable = $true
+				$keys = $targetObject.Keys
+				$global:tab_index += 1
+				$wrapper_begin = "{"
+				if ($keys)
+				{
+					# This next part, handles indentation.
+					$wrapper_begin += "`r`n"+"`t"*$global:tab_index
+				}
+				$delimeter = ",`r`n"+"`t"*$global:tab_index
 			} else {
 				$keys = @()
 				$shouldOutput = $false
@@ -94,10 +111,15 @@ Function ConvertTo-JSON-Stable {
 						$key = $key.Name
 						$value = $targetObject.$key
 					}
+                    elseif ($isHashtable)
+					{
+						$value = $targetObject.$key
+					}
 					elseif ($isList)
 					{
 						$value = $key
-					} else {
+					}
+                    else {
 						$value = $null
 					}
 					if ($value -eq $null)
@@ -122,11 +144,16 @@ Function ConvertTo-JSON-Stable {
 								$jsonProperties += "[$value]"
 							}
 						}
-						 'PSCustomObject' {
-							# We call ConvertTo-JSON-Stable recursively,
+                        'PSCustomObject' {
+						    # We call ConvertTo-JSON-Stable recursively,
 							# to get the string representation of this PSCustomObject's inner parts.
 							$jsonProperties += "`"$key`": $($value | ConvertTo-JSON-Stable)"
-						 }
+                        }
+                        'Hashtable' {
+						    # We call ConvertTo-JSON-Stable recursively,
+							# to get the string representation of this Hashtable's inner parts.
+							$jsonProperties += "`"$key`": $($value | ConvertTo-JSON-Stable)"
+                        }
 						default {
 							if ($Type -eq "Object[]")
 							{
@@ -142,7 +169,7 @@ Function ConvertTo-JSON-Stable {
 				$currentOutput = $wrapper_begin
 				$currentOutput = $currentOutput + "$($jsonProperties -join $delimeter)"
 				# This next part, handles indentation in the json.
-				if ($Type -eq "PSCustomObject") {
+				if ($Type -eq "PSCustomObject" -or $Type -eq "Hashtable") {
 					$global:tab_index = $global:tab_index - 1
 					$wrapper_end = "}"
 					if ($keys)
@@ -168,6 +195,10 @@ Function ConvertFrom-JSON-Stable {
         $json,
         [switch]$raw
     )
+    # TODO: Replace logic of convertsion from json object to powershell object. Currently we create a PSCustomObject with following syntax:
+    # PsObject syntax: ** New-Object PSObject | Add-Member -Passthru NoteProperty "key1" "value2" | Add-Member -Passthru NoteProperty "key2" "value2" **
+    # We should try to create a Hashtable, which is neat and simpler than PSCustomObject, with the following *possible* syntax:
+    # Hashtable possible syntax: ** @{"key1"="value1";"key2"="value2"} **
 
     Begin
     {
@@ -275,7 +306,7 @@ Function ConvertFrom-JSON-Stable {
 
     Process {
         if($_) {
-            $result += parse $_.Replace("true", "`"$true`"").Replace("false", "`"$false`"")
+            $result += parse $_.Replace("true", '$true').Replace("false", '$false').Replace("\\", "\")
         }
     }
 
@@ -283,7 +314,7 @@ Function ConvertFrom-JSON-Stable {
         If($json) {
             $result = parse $json
         }
-        #Write-Host "result: $result"
+        Write-Host "result: $result"
         If(-Not $raw) {
             $result | Invoke-Expression
         } else {
@@ -291,19 +322,3 @@ Function ConvertFrom-JSON-Stable {
         }
     }
 }
-
-
-# Sample Usage:
-$JSONFilePath = "file.json"
-$JSON = Get-Content $JSONFilePath
-# Deserialize from string to powershell object.
-$DeserializedObject = $JSON | ConvertFrom-JSON-Stable
-# Do something with object.
-$DeserializedObject.bamba = "bisly"
-$DeserializedObject.banana += "1"
-# Serialize from object to string.
-$SerializedJSON = $DeserializedObject | ConvertTo-JSON-Stable
-# Save JSON to file again.
-$JSONResultFilePath = "result.json"
-Set-Content -Path $JSONResultFilePath -Value $SerializedJSON -Encoding UTF8
-# Enjoy.
