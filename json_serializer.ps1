@@ -202,106 +202,272 @@ Function ConvertFrom-JSON-Stable {
 
     Begin
     {
-    	$script:stringState = $false
+        $script:stringState = $false
+        $script:appendingToUnicode = $false
+        $script:unicodeStringCandidate = ''
         $script:stateArray=New-Object System.Collections.ArrayList
-    	$script:valueState = $false
+        $script:valueState = $false
         $global:result=""
 
-    	function scan-characters ($c) {
-    		switch -regex ($c)
-    		{
-    			"{" {
+        function scan-characters ($c) {
+			$script:out = ''
+            switch -regex ($c)
+            {
+                "{" {
+					if ($script:appendingToUnicode)
+					{
+						$script:appendingToUnicode = $false
+						if ($script:stringState)
+						{
+							$script:out += $script:unicodeStringCandidate
+						}
+						else
+						{
+							$script:unicodeStringCandidate
+						}
+						$script:unicodeStringCandidate = ''
+					}
                     if ($script:stringState)
                     {
-                        $c
+                        $script:out += $c
                     }
                     else
                     {
-                        "(New-Object PSObject "
+                        $script:out += "(New-Object PSObject "
                         [void]$script:stateArray.Add("d")
                         $script:valueState=$script:stringState=$false
                     }
                 }
-    			"}" {
+                "}" {
+					if ($script:appendingToUnicode)
+					{
+						$script:appendingToUnicode = $false
+						if ($script:stringState)
+						{
+							$script:out += $script:unicodeStringCandidate
+						}
+						else
+						{
+							$script:unicodeStringCandidate
+						}
+						$script:unicodeStringCandidate = ''
+					}
                     if ($script:stringState)
                     {
-                        $c
+                        $script:out += $c
                     }
                     else
                     {
-                        ")"
+                        $script:out += ")"
                         $script:stateArray.RemoveAt($script:stateArray.Count-1)
                     }
                 }
                 "\[" {
+					if ($script:appendingToUnicode)
+					{
+						$script:appendingToUnicode = $false
+						if ($script:stringState)
+						{
+							$script:out += $script:unicodeStringCandidate
+						}
+						else
+						{
+							$script:unicodeStringCandidate
+						}
+						$script:unicodeStringCandidate = ''
+					}
                     if ($script:stringState)
                     {
-                        $c
+                        $script:out += $c
                     }
                     else
                     {
                         [void]$script:stateArray.Add("a")
-                        "@("
+                        $script:out += "@("
                     }
                 }
-    			"\]" {
+                "\]" {
+					if ($script:appendingToUnicode)
+					{
+						$script:appendingToUnicode = $false
+						if ($script:stringState)
+						{
+							$script:out += $script:unicodeStringCandidate
+						}
+						else
+						{
+							$script:unicodeStringCandidate
+						}
+						$script:unicodeStringCandidate = ''
+					}
                     if ($script:stringState)
                     {
-                        $c
+                        $script:out += $c
                     }
                     else
                     {
                         $script:stateArray.RemoveAt($script:stateArray.Count-1)
-					    ")"
+                        $script:out += ")"
                     }
                 }
                 "," {
+					if ($script:appendingToUnicode)
+					{
+						$script:appendingToUnicode = $false
+						if ($script:stringState)
+						{
+							$script:out += $script:unicodeStringCandidate
+						}
+						else
+						{
+							$script:unicodeStringCandidate
+						}
+						$script:unicodeStringCandidate = ''
+					}
                     if ($script:stringState)
                     {
-                        $c
+                        $script:out += $c
                     }
                     else
                     {
-                        if($script:stateArray[$script:stateArray.Count-1] -eq "a") { "," }
+                        if($script:stateArray[$script:stateArray.Count-1] -eq "a") { $script:out += "," }
                         else {
                             $script:valueState = $false
                             #$script:stringState = $false
                         }
                     }
-    			}
-    			'"' {
-    				if($script:stringState -eq $false -and $script:valueState -eq $false -and $script:stateArray[$script:stateArray.Count-1] -eq "d") {
-    					' | Add-Member -Passthru NoteProperty "'
-    				}
-    				else { '"' }
-    				$script:stringState = !$script:stringState
-    			}
+                }
+                '"' {
+					if ($script:appendingToUnicode)
+					{
+						$script:appendingToUnicode = $false
+						if ($script:stringState)
+						{
+							$script:out += $script:unicodeStringCandidate
+						}
+						else
+						{
+							$script:unicodeStringCandidate
+						}
+						$script:unicodeStringCandidate = ''
+					}
+                    if($script:stringState -eq $false -and $script:valueState -eq $false -and $script:stateArray[$script:stateArray.Count-1] -eq "d") {
+                        #' | Add-Member -Passthru NoteProperty $([regex]::Unescape("'
+                        $script:out += ' | Add-Member -Passthru NoteProperty "'
+                    }
+                    else {
+                        #Write-Host "script:stringState: $script:stringState"
+                        #Write-Host "script:valueState: $script:valueState"
+                        #Write-Host "script:stateArray: $script:stateArray"
+                        if ($script:valueState -eq $false)
+                        {
+                            #'"))'
+                            $script:out += '"'
+                        }
+                        else
+                        {
+                            if (!$script:stringState)
+                            {
+                                #'$([regex]::Unescape("'
+                                $script:out += '"'
+                            }
+                            else
+                            {
+                                #'"))'
+                                $script:out += '"'
+                            }
+                        }
+                    }
+                    $script:stringState = !$script:stringState
+                }
 
-    			":" {
+                ":" {
+					if ($script:appendingToUnicode)
+					{
+						$script:appendingToUnicode = $false
+						if ($script:stringState)
+						{
+							$script:out += $script:unicodeStringCandidate
+						}
+						else
+						{
+							$script:unicodeStringCandidate
+						}
+						$script:unicodeStringCandidate = ''
+					}
                     if($script:stringState){
-                        ":"
+                        $script:out += ":"
                     } else {
-                        " "
+                        $script:out += " "
                         $script:valueState = $true
                     }
                 }
 
-                "[\t\r\n]" {}
+                "[\t\r\n]" {
+					if ($script:appendingToUnicode)
+					{
+						$script:appendingToUnicode = $false
+						if ($script:stringState)
+						{
+							$script:out += $script:unicodeStringCandidate
+						}
+						else
+						{
+							$script:unicodeStringCandidate
+						}
+						$script:unicodeStringCandidate = ''
+					}
+				}
 
-                default {$c}
-    		}
-    	}
+                default {
+                    #Write-Host "c: $c"
+                    if ($c -eq '\'){
+                        if ($script:appendingToUnicode)
+                        {
+                            $script:out += $c
+                        }
+                        $script:unicodeStringCandidate = $c
+                        $script:appendingToUnicode = $true
+                    }
+                    elseif ($script:appendingToUnicode){
+                        $script:unicodeStringCandidate += $c
+                    } else {
+                        $script:out += $c
+                    }
+					if ($script:unicodeStringCandidate.Length -eq 6)
+                    {
+                        if ($script:unicodeStringCandidate.startswith("\u") -and ($script:unicodeStringCandidate.split("\").count -eq 2))
+                        {
+                            try {
+                                #Write-Host "Converting unicode candidate: $script:unicodeStringCandidate"
+                                $script:unicodeStringCandidate = [regex]::Unescape($script:unicodeStringCandidate)
+                                #Write-Host "Converted unicode to: $script:unicodeStringCandidate"
+                            }
+                            catch {
+                                #Write-Host "Failed converting candidate: $script:unicodeStringCandidate."
+                            }
+                        }
+                        $script:out += $script:unicodeStringCandidate
+                        $script:unicodeStringCandidate = ''
+                        $script:appendingToUnicode = $false
+                    }
+                }
+            }
+			if ($script:out){
+				$script:out
+			}
+        }
 
-    	function parse($target)
-    	{
+        function parse($target)
+        {
             $result = ""
             $firstBackslash = $true
-    		ForEach($c in $target.ToCharArray()) {
+            ForEach($c in $target.ToCharArray()) {
                 $result += scan-characters $c
-    		}
+            }
 
-    		$result
-    	}
+            $result
+        }
     }
 
     Process {
@@ -314,7 +480,7 @@ Function ConvertFrom-JSON-Stable {
         If($json) {
             $result = parse $json
         }
-        Write-Host "result: $result"
+        #Write-Host "result: $result"
         If(-Not $raw) {
             $result | Invoke-Expression
         } else {
