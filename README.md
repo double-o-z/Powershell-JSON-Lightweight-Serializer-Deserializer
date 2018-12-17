@@ -12,6 +12,6 @@ $a = $JSON | ConvertFrom-JSON-Stable
 $a[0].prop += 1
 
 # Convert from powershell object to json (Serialize):
-$b = $JSON | ConvertTo-JSON-Stable
+$b = $a | ConvertTo-JSON-Stable
 
 Set-Content -Path .\data.json -Value $b -Encoding utf8
