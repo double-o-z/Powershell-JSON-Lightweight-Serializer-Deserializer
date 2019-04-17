@@ -130,7 +130,6 @@ Function ConvertTo-JSON-Stable {
 					}
 					$dataType = ($value.GetType()).Name
 					switch -regex ($dataType) {
-						# TODO: PSObject, Hashtable.
 						'Object\[\]' {
 							# We call ConvertTo-JSON-Stable recursively,
 							# to get the string representation of this list's inner parts.
@@ -320,42 +319,70 @@ Function ConvertFrom-JSON-Stable {
 
 		function convertUnicodeChars {
 			$newString = ''
-			$unicodeChar = ''
+			#$unicodeChar = ''
+            $duringSlashes = $false
 			$appendingChars = $false
 			foreach ($char in $script:unicodeString.toCharArray()){
 				if ($char -eq '\')
 				{
-					if ($unicodeChar)
+                    $duringSlashes = $true
+					if ($appendingChars)
+					{
+                         #if slash in the middle of appendingChars, append previous accumulation, and reset
+					     $newString += $unicodeChar
+                         $appendingChars = $false
+					}
+					$newString += '\'					
+				}
+				else{
+					if ($duringSlashes){
+						$duringSlashes = $false
+						if (($newString.Length -ge 1) -and ($newString.Substring($newString.Length - 1, 1) -eq '\')){
+							#start accumulating in $unicodeChar if $newString has at least 1 slash at the end
+							$appendingChars = $true
+							$unicodeChar = ''
+						}
+					}
+
+					if ($appendingChars)
+					{
+						$unicodeChar += $char
+						if ($unicodeChar.Length -eq 5)
+						{
+							$unicodeCharMatch = '\' + $unicodeChar
+							if ($unicodeCharMatch -cmatch "(\\u[0-9a-fA-F]{4})")
+							{
+								try
+								{
+									$unicodeCharMatch = [regex]::Unescape($unicodeCharMatch)
+									#Write-Host "Converted unicodeCharMatch: $unicodeCharMatch"
+									#remove last 1 slash from newString, before appending the converted 6 chars
+									$newString = $newString.Substring(0, $newString.Length - 1)
+									$newString += $unicodeCharMatch
+								}
+								catch {}
+								$appendingChars = $false
+							}
+							else{
+								#no match : just append the 4 chars accumulated in $unicodeChar to $newString
+								$newString += $unicodeChar
+								$appendingChars = $false
+							}
+						}
+					}
+					else
 					{
 						$newString += $char
 					}
-					$unicodeChar = $char
-					$appendingChars = $true
-				}
-				elseif ($appendingChars)
-				{
-					$unicodeChar += $char
-					if ($unicodeChar.Length -eq 6)
-					{
-						if ($unicodeChar -cmatch "(\\u[0-9a-fA-F]{4})")
-						{
-							try
-							{
-								$unicodeChar = [regex]::Unescape($unicodeChar)
-								#Write-Host "Converted unicodeChar: $unicodeChar"
-							}
-							catch {}
-						}
-						$newString += $unicodeChar
-						$unicodeChar = ''
-						$appendingChars = $false
-					}
-				}
-				else
-				{
-					$newString += $char
-				}
+                }
 			}
+
+            #handle the rest if exists : if during appendingChars, $unicodeChar.Length never reached 4
+            if ($appendingChars){
+                $newString += $unicodeChar
+            }
+
+
 			# When we see backslash in string '\' we assume a unicode special character is coming.
 			# We aggregate string until length of 6 is achieved.
 			# We make sure candidates contain only a-f,0-9 letters.
@@ -404,7 +431,8 @@ function ConvertPSObjectToHashtable
             $collection = @(
                 foreach ($object in $InputObject) { ConvertPSObjectToHashtable $object }
             )
-
+			# The comma here is important, because when the list is empty it is converted to $null.
+			# The comma solves it.
 			,$collection
         }
         elseif ($InputObject.GetType().Name -eq "PSCustomObject")
